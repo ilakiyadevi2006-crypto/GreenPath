@@ -888,10 +888,11 @@ app.get('/api/courses/catalog', (_req, res) => {
 // -------------------------------------------------------------
 
 function isAdminAuthorized(req: express.Request): boolean {
+  const configuredAdminKey = process.env.ADMIN_SECRET_KEY || 'greenpath-admin-2026';
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey === 'greenpath-admin-2026') return true;
+  if (adminKey && adminKey === configuredAdminKey) return true;
   const user = getAuthUser(req);
-  if (user && (user.email.endsWith('@greenpath.org') || user.email.includes('admin'))) {
+  if (user && user.email.toLowerCase().endsWith('@greenpath.org')) {
     return true;
   }
   return false;

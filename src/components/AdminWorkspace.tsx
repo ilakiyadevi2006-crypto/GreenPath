@@ -88,7 +88,7 @@ export const AdminWorkspace: React.FC = () => {
   };
 
   useEffect(() => {
-    if (adminKey || (user && (user.email.endsWith('@greenpath.org') || user.email.includes('admin')))) {
+    if (adminKey || (user && user.email.toLowerCase().endsWith('@greenpath.org'))) {
       fetchAdminOverview();
     }
   }, [adminKey, user]);

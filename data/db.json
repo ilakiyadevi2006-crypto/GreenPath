@@ -2,5 +2,11 @@
   "users": [],
   "sessions": [],
   "enrollments": [],
-  "certificates": []
+  "certificates": [],
+  "activities": [],
+  "notes": [],
+  "bookmarks": [],
+  "learningGoals": [],
+  "courseOverrides": [],
+  "quizOverrides": {}
 }
