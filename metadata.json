@@ -1,0 +1,6 @@
+{
+  "name": "GreenPath - AI-Powered Green Skills Learning Platform",
+  "description": "Learn Green Skills. Make Every Skill Count. Build practical sustainability skills through structured lessons, interactive quizzes, and real-world activities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
