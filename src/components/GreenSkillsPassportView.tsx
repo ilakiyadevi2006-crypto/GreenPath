@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LEARNING_PATHS } from '../data/courses';
+import { CertificateModal } from './CertificateModal';
 import {
   ShieldCheck, Award, CheckCircle2, AlertCircle, Search, QrCode,
   Copy, Check, FileCheck, ExternalLink, Compass, Clock, Lock
@@ -19,6 +20,7 @@ export const GreenSkillsPassportView: React.FC<GreenSkillsPassportViewProps> = (
 
   const [verifyIdInput, setVerifyIdInput] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [selectedCert, setSelectedCert] = useState<any | null>(null);
   const [lookupResult, setLookupResult] = useState<{
     searched: boolean;
     found: boolean;
@@ -387,8 +389,17 @@ export const GreenSkillsPassportView: React.FC<GreenSkillsPassportViewProps> = (
                   <span className="font-bold">{cert.scorePercent}%</span>
                 </div>
 
-                <div className="pt-2 border-t border-[#123e2b]/10 text-[11px] text-[#5b7b68]">
-                  Verified Standards: {cert.standardsVerified?.join(' · ')}
+                <div className="pt-2 border-t border-[#123e2b]/10 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-[#5b7b68] truncate pr-2">
+                    {cert.standardsVerified?.[0] || 'Accredited Credential'}
+                  </span>
+                  <button
+                    onClick={() => setSelectedCert(cert)}
+                    className="text-xs font-semibold text-[#184e34] hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>View Certificate</span>
+                  </button>
                 </div>
               </div>
             ))}
@@ -437,9 +448,18 @@ export const GreenSkillsPassportView: React.FC<GreenSkillsPassportViewProps> = (
           }`}>
             {lookupResult.found ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 font-bold text-sm">
-                  <CheckCircle2 className="w-5 h-5 text-[#65a30d]" />
-                  <span>Verified Authentic Credential</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    <CheckCircle2 className="w-5 h-5 text-[#65a30d]" />
+                    <span>Verified Authentic Credential</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCert(lookupResult.data)}
+                    className="px-3 py-1 rounded-lg bg-[#184e34] text-white text-xs font-semibold hover:bg-[#0b291b] cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Inspect Certificate</span>
+                    <ExternalLink className="w-3 h-3 text-[#a3e635]" />
+                  </button>
                 </div>
                 <div className="space-y-1 pl-7 font-sans">
                   <div><strong>Credential ID:</strong> <span className="font-mono">{lookupResult.data.id}</span></div>
@@ -461,6 +481,14 @@ export const GreenSkillsPassportView: React.FC<GreenSkillsPassportViewProps> = (
           </div>
         )}
       </div>
+
+      {/* Certificate Modal */}
+      {selectedCert && (
+        <CertificateModal
+          certificate={selectedCert}
+          onClose={() => setSelectedCert(null)}
+        />
+      )}
 
     </div>
   );

@@ -7,6 +7,12 @@ import { GoogleGenAI } from '@google/genai';
 import { db, StoredUser, StoredCertificate, StoredEnrollment } from './src/db/storage';
 import { COURSE_QUIZZES } from './src/data/quizzes';
 import { LEARNING_PATHS } from './src/data/courses';
+import {
+  GREEN_IT_FINAL_ASSESSMENT_META,
+  GREEN_IT_FINAL_ASSESSMENT_SERVER_QUESTIONS,
+  getClientAssessmentQuestions
+} from './src/data/greenItFinalAssessmentData';
+import { GREEN_IT_CHAPTERS } from './src/data/greenItChapters';
 
 dotenv.config();
 
@@ -407,6 +413,219 @@ app.post('/api/user/progress/chapter-quiz', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// Final Assessment: Green IT Fundamentals (60 Marks)
+// -------------------------------------------------------------
+
+app.get('/api/courses/:courseId/final-assessment', (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required to access final assessment.' });
+  }
+
+  const { courseId } = req.params;
+  const enrollment = db.getEnrollment(user.id, courseId);
+  if (!enrollment) {
+    return res.status(403).json({ error: 'You are not enrolled in this course.' });
+  }
+
+  if (courseId === 'green-it' || courseId === 'green-it-fundamentals') {
+    const requiredChapterIds = GREEN_IT_CHAPTERS.map(ch => ch.id);
+    const completedChapters = requiredChapterIds.filter(id => enrollment.completedLessons.includes(id));
+    const allQuizzesPassed = requiredChapterIds.every(id => enrollment.chapterQuizResults?.[id]?.passed);
+
+    if (completedChapters.length < requiredChapterIds.length || !allQuizzesPassed) {
+      return res.status(403).json({
+        locked: true,
+        reason: 'The Final Assessment remains locked until all six chapters have been completed and their chapter quizzes passed with at least 80%.',
+        completedCount: completedChapters.length,
+        requiredCount: requiredChapterIds.length,
+        allQuizzesPassed
+      });
+    }
+
+    return res.json({
+      locked: false,
+      assessment: {
+        ...GREEN_IT_FINAL_ASSESSMENT_META,
+        questions: getClientAssessmentQuestions()
+      },
+      previousAttempts: enrollment.finalAssessment?.attempts || [],
+      bestScoreMarks: enrollment.finalAssessment?.bestScoreMarks || 0,
+      bestScorePercent: enrollment.finalAssessment?.bestScorePercent || 0,
+      passed: Boolean(enrollment.finalAssessment?.passed)
+    });
+  }
+
+  res.status(404).json({ error: 'Final assessment not available for this course.' });
+});
+
+app.post('/api/courses/:courseId/final-assessment/submit', (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required.' });
+  }
+
+  const { courseId } = req.params;
+  const { answers } = req.body;
+
+  if (!answers || typeof answers !== 'object') {
+    return res.status(400).json({ error: 'Invalid assessment submission data.' });
+  }
+
+  let enrollment = db.getEnrollment(user.id, courseId);
+  if (!enrollment) {
+    return res.status(403).json({ error: 'You are not enrolled in this course.' });
+  }
+
+  if (courseId === 'green-it' || courseId === 'green-it-fundamentals') {
+    const requiredChapterIds = GREEN_IT_CHAPTERS.map(ch => ch.id);
+    const completedChapters = requiredChapterIds.filter(id => enrollment.completedLessons.includes(id));
+    const allQuizzesPassed = requiredChapterIds.every(id => enrollment.chapterQuizResults?.[id]?.passed);
+
+    if (completedChapters.length < requiredChapterIds.length || !allQuizzesPassed) {
+      return res.status(403).json({
+        error: 'Final assessment is locked. You must complete all six chapters and pass their quizzes before submitting the final assessment.'
+      });
+    }
+
+    const questions = GREEN_IT_FINAL_ASSESSMENT_SERVER_QUESTIONS;
+    let correctCount = 0;
+    const totalQuestions = questions.length; // 30
+    const marksPerQuestion = 2;
+    const maxMarks = 60;
+
+    // Track chapter performance
+    const chapterStats: Record<number, { chapterTitle: string; correct: number; total: number }> = {};
+    for (let i = 1; i <= 6; i++) {
+      const ch = GREEN_IT_CHAPTERS.find(c => c.chapterNumber === i);
+      chapterStats[i] = {
+        chapterTitle: ch ? ch.title : `Chapter ${i}`,
+        correct: 0,
+        total: 0
+      };
+    }
+
+    const resultsDetail = questions.map(q => {
+      const userAnswer = answers[q.id];
+      const isCorrect = userAnswer === q.correctAnswerIndex;
+      if (isCorrect) correctCount++;
+
+      if (chapterStats[q.chapterNumber]) {
+        chapterStats[q.chapterNumber].total++;
+        if (isCorrect) chapterStats[q.chapterNumber].correct++;
+      }
+
+      return {
+        questionId: q.id,
+        userAnswerIndex: userAnswer !== undefined ? userAnswer : null,
+        correctAnswerIndex: q.correctAnswerIndex,
+        isCorrect,
+        chapterNumber: q.chapterNumber,
+        chapterTitle: q.chapterTitle,
+        explanation: q.explanation
+      };
+    });
+
+    const scoreMarks = correctCount * marksPerQuestion; // out of 60
+    const scorePercent = Math.round((scoreMarks / maxMarks) * 100);
+    const passed = scoreMarks >= 48; // minimum 48 marks out of 60 (80%)
+
+    // Topic improvement explanations
+    const chapterFeedback = Object.entries(chapterStats).map(([chNum, stat]) => {
+      const pct = stat.total > 0 ? Math.round((stat.correct / stat.total) * 100) : 0;
+      const needsImprovement = pct < 80;
+      return {
+        chapterNumber: Number(chNum),
+        chapterTitle: stat.chapterTitle,
+        correct: stat.correct,
+        total: stat.total,
+        percentage: pct,
+        needsImprovement,
+        recommendation: needsImprovement
+          ? `Review ${stat.chapterTitle} study material to strengthen understanding.`
+          : `Demonstrated strong proficiency in ${stat.chapterTitle}.`
+      };
+    });
+
+    // Save attempt record
+    if (!enrollment.finalAssessment) {
+      enrollment.finalAssessment = {
+        attemptsCount: 0,
+        bestScoreMarks: 0,
+        bestScorePercent: 0,
+        passed: false,
+        lastAttemptAt: new Date().toISOString(),
+        attempts: []
+      };
+    }
+
+    enrollment.finalAssessment.attemptsCount = (enrollment.finalAssessment.attemptsCount || 0) + 1;
+    enrollment.finalAssessment.lastAttemptAt = new Date().toISOString();
+    enrollment.finalAssessment.bestScoreMarks = Math.max(enrollment.finalAssessment.bestScoreMarks || 0, scoreMarks);
+    enrollment.finalAssessment.bestScorePercent = Math.max(enrollment.finalAssessment.bestScorePercent || 0, scorePercent);
+    if (passed) {
+      enrollment.finalAssessment.passed = true;
+    }
+
+    if (!enrollment.finalAssessment.attempts) {
+      enrollment.finalAssessment.attempts = [];
+    }
+    enrollment.finalAssessment.attempts.push({
+      attemptNumber: enrollment.finalAssessment.attemptsCount,
+      scoreMarks,
+      totalMarks: maxMarks,
+      scorePercent,
+      passed,
+      completedAt: new Date().toISOString()
+    });
+
+    // Update overall course quizResult if passed
+    if (passed) {
+      enrollment.quizResult = {
+        passed: true,
+        scorePercent,
+        scoreMarks,
+        totalMarks: maxMarks,
+        correctCount,
+        totalQuestions,
+        completedAt: new Date().toISOString()
+      };
+    }
+
+    db.saveEnrollment(enrollment);
+
+    db.addActivity({
+      id: `act_${crypto.randomBytes(8).toString('hex')}`,
+      userId: user.id,
+      courseId,
+      courseTitle: 'Green IT Fundamentals',
+      type: passed ? 'quiz_passed' : 'quiz_attempted',
+      title: passed ? 'Passed Green IT Final Assessment' : 'Attempted Green IT Final Assessment',
+      description: passed
+        ? `Achieved ${scoreMarks}/60 marks (${scorePercent}%) - Passed`
+        : `Scored ${scoreMarks}/60 marks (${scorePercent}%) - 48/60 required to pass`,
+      timestamp: new Date().toISOString()
+    });
+
+    return res.json({
+      passed,
+      scoreMarks,
+      maxMarks,
+      scorePercent,
+      minPassingMarks: 48,
+      correctCount,
+      totalQuestions,
+      resultsDetail,
+      chapterFeedback,
+      attemptsCount: enrollment.finalAssessment.attemptsCount,
+      bestScoreMarks: enrollment.finalAssessment.bestScoreMarks
+    });
+  }
+
+  res.status(400).json({ error: 'Final assessment not available for this course.' });
+});
+
+// -------------------------------------------------------------
 // Real Verifiable Certificate Generation & Verification Endpoints
 // -------------------------------------------------------------
 
@@ -426,42 +645,63 @@ app.post('/api/user/certificate/claim', (req, res) => {
     return res.status(400).json({ error: 'You are not enrolled in this course.' });
   }
 
-  // Verify that all lessons were actually completed
+  // Verify that all lessons / chapters were actually completed
   if (enrollment.completedLessons.length < totalLessonsCount) {
     return res.status(400).json({
-      error: `Course incomplete. You have finished ${enrollment.completedLessons.length} of ${totalLessonsCount} lessons.`
+      error: `Course incomplete. You have finished ${enrollment.completedLessons.length} of ${totalLessonsCount} required chapters.`
     });
   }
 
-  // Verify that quiz was passed with >= 80%
+  // Verify that final assessment or quiz was passed with at least 80% (>= 48/60)
   if (!enrollment.quizResult || !enrollment.quizResult.passed || enrollment.quizResult.scorePercent < 80) {
     return res.status(400).json({
-      error: 'You must pass the comprehensive course assessment quiz with at least 80% to claim this certificate.'
+      error: 'You must pass the comprehensive course final assessment with at least 80% (minimum 48/60 marks) to claim this certificate.'
     });
   }
 
   if (enrollment.certificateClaimedId) {
     const existingCert = db.getCertificateById(enrollment.certificateClaimedId);
     if (existingCert) {
-      return res.json({ certificate: existingCert, message: 'Certificate already issued.' });
+      // Ensure existing certificate matches current user
+      if (existingCert.userId === user.id) {
+        return res.json({ certificate: existingCert, message: 'Certificate already issued.' });
+      }
     }
   }
 
-  // Issue real verifiable certificate with cryptographic identifier
-  const certId = `GP-2026-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  // Issue real verifiable certificate with cryptographic identifier and authenticated learner full name
+  const isGreenIt = courseId === 'green-it' || courseId === 'green-it-fundamentals';
+  const prefix = isGreenIt ? 'GP-2026-GIT' : 'GP-2026';
+  const certId = `${prefix}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+  const scoreMarks = enrollment.quizResult.scoreMarks !== undefined
+    ? enrollment.quizResult.scoreMarks
+    : Math.round((enrollment.quizResult.scorePercent / 100) * 60);
+
+  const standards = isGreenIt
+    ? [
+        'Green Software Foundation SCI Specification (ISO/IEC 21031)',
+        'Energy Star 8.0 & 80 PLUS Power Supply Efficiency Standards',
+        'e-Stewards & R2v3 IT Asset Disposition Circular Standards',
+        'The Green Grid PUE Data Center Metric (ISO/IEC 30134-2)'
+      ]
+    : [
+        'GHG Protocol Corporate Standard (WRI / WBCSD)',
+        'ISO 14064-1:2018 Specification for GHG Quantifications',
+        'GreenPath Technical Assessment Defense Verification'
+      ];
+
   const newCertificate: StoredCertificate = {
     id: certId,
     userId: user.id,
-    learnerName: user.fullName,
+    learnerName: user.fullName, // MUST be registered full name from user profile
     courseId,
-    courseTitle,
+    courseTitle: isGreenIt ? 'Green IT Fundamentals' : courseTitle,
     issuedAt: new Date().toISOString(),
     scorePercent: enrollment.quizResult.scorePercent,
-    standardsVerified: [
-      'GHG Protocol Corporate Standard (WRI / WBCSD)',
-      'ISO 14064-1:2018 Specification for GHG Quantifications',
-      'GreenPath Technical Assessment Defense Verification'
-    ]
+    scoreMarks,
+    totalMarks: enrollment.quizResult.totalMarks || 60,
+    standardsVerified: standards
   };
 
   db.saveCertificate(newCertificate);
@@ -472,17 +712,17 @@ app.post('/api/user/certificate/claim', (req, res) => {
     id: `act_${crypto.randomBytes(8).toString('hex')}`,
     userId: user.id,
     courseId,
-    courseTitle,
+    courseTitle: isGreenIt ? 'Green IT Fundamentals' : courseTitle,
     type: 'certificate_earned',
-    title: `Earned Credential: ${courseTitle}`,
-    description: `Credential ID: ${certId} verified and recorded`,
+    title: `Earned Credential: ${isGreenIt ? 'Green IT Fundamentals' : courseTitle}`,
+    description: `Credential ID: ${certId} verified and recorded with score ${scoreMarks}/60 (${enrollment.quizResult.scorePercent}%)`,
     timestamp: new Date().toISOString()
   });
 
   res.status(201).json({ certificate: newCertificate });
 });
 
-// Verification lookup for public audit (rejection of fake credentials)
+// Verification lookup for public audit (rejection of fake credentials; no private info leak)
 app.get('/api/certificates/:id', (req, res) => {
   const { id } = req.params;
   const cert = db.getCertificateById(id);
@@ -492,9 +732,21 @@ app.get('/api/certificates/:id', (req, res) => {
       error: `No authentic credential found for ID: ${id}. Only certificates earned through actual completed coursework and passed assessments are valid.`
     });
   }
+
+  // Return public credential verification without exposing private email or user ID
   res.json({
     found: true,
-    certificate: cert
+    certificate: {
+      id: cert.id,
+      learnerName: cert.learnerName,
+      courseId: cert.courseId,
+      courseTitle: cert.courseTitle,
+      issuedAt: cert.issuedAt,
+      scorePercent: cert.scorePercent,
+      scoreMarks: cert.scoreMarks,
+      totalMarks: cert.totalMarks,
+      standardsVerified: cert.standardsVerified
+    }
   });
 });
 

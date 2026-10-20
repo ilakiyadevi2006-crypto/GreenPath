@@ -38,13 +38,23 @@ export const EcoMentorSection: React.FC<EcoMentorSectionProps> = ({
   const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
 
-  const scrollToBottom = () => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior
+      });
+    }
   };
 
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     scrollToBottom();
   }, [messages, isTyping]);
 
@@ -203,7 +213,7 @@ export const EcoMentorSection: React.FC<EcoMentorSectionProps> = ({
           </div>
 
           {/* Messages Scroll Area */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-[#fafbf9]">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-[#fafbf9]">
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -249,8 +259,6 @@ export const EcoMentorSection: React.FC<EcoMentorSectionProps> = ({
                 </div>
               </div>
             )}
-
-            <div ref={chatBottomRef} />
           </div>
 
           {/* Starter Prompts */}

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LearningPath, CourseChapter, SyllabusLesson } from '../types';
-import { COURSE_QUIZZES } from '../data/quizzes';
+import { LearningPath, CourseChapter } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { GreenItFinalAssessmentModal } from './GreenItFinalAssessmentModal';
+import { CertificateModal } from './CertificateModal';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Circle, Lock, Award, BookOpen, Clock,
   Sparkles, Send, RefreshCw, AlertCircle, Check, HelpCircle, X, Menu,
-  MessageSquare, ChevronRight, ChevronLeft, ShieldCheck, FileCheck
+  ChevronRight, ChevronLeft, ShieldCheck, Video, Lightbulb, FileText,
+  RotateCcw, PlayCircle
 } from 'lucide-react';
 
 interface CoursePlayerProps {
@@ -25,12 +27,10 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
   const {
     user,
     enrollments,
+    certificates,
     markLessonComplete,
-    submitCourseQuiz,
     submitChapterQuiz,
-    claimCourseCertificate,
-    saveNote,
-    notes
+    claimCourseCertificate
   } = useAuth();
 
   const isChapterBased = Boolean(course.chapters && course.chapters.length > 0);
@@ -58,6 +58,10 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
   const [markingChapterComplete, setMarkingChapterComplete] = useState(false);
   const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
+  // Modals
+  const [showFinalAssessmentModal, setShowFinalAssessmentModal] = useState(false);
+  const [viewingCertificate, setViewingCertificate] = useState<any | null>(null);
+
   // Sync stored quiz results from enrollment when it updates
   useEffect(() => {
     if (enrollment?.chapterQuizResults) {
@@ -68,8 +72,8 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     }
   }, [enrollment?.chapterQuizResults]);
 
-  // Determine chapter status & unlock rule
-  // Rule: A learner can only open the next chapter after completing the previous chapter and passing its quiz.
+  // Determine chapter status & unlock rule:
+  // Rule: Next chapter unlocks ONLY when previous chapter is completed AND its quiz passed with >= 80%
   const isChapterCompleted = (chapterId: string) => {
     return completedLessonIds.includes(chapterId) || localCompletedIds.includes(chapterId);
   };
@@ -95,7 +99,6 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     if (index === currentChapterIndex) {
       return 'In Progress';
     }
-    // If unlocked and has quiz answers or user visited, it's in progress, else not started
     if (chapterQuizAnswers[chapter.id] && Object.keys(chapterQuizAnswers[chapter.id]).length > 0) {
       return 'In Progress';
     }
@@ -129,8 +132,14 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     ? Math.round((completedChaptersCount / totalChaptersCount) * 100)
     : 0;
 
-  // Sidebar & AI Drawer states
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Final Assessment Eligibility
+  const isAllChaptersCompleted = totalChaptersCount > 0 &&
+    chapters.every(c => isChapterCompleted(c.id) && isChapterQuizPassed(c.id));
+  const finalAssessmentPassed = Boolean(enrollment?.finalAssessment?.passed || enrollment?.quizResult?.passed);
+  const existingCertificate = certificates.find(c => c.courseId === course.id);
+
+  // Responsive Sidebar & AI Drawer states
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
   // EcoMentor AI in-lesson state
@@ -138,11 +147,10 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
   const [aiMessages, setAiMessages] = useState<{ sender: 'user' | 'mentor'; text: string }[]>([
     {
       sender: 'mentor',
-      text: `Hello! I am EcoMentor AI. I am here alongside your lesson: "${currentChapter?.title || course.title}". Ask me any questions, request an analogy, or test your understanding without leaving your place in the lesson!`
+      text: `Hello! I am EcoMentor AI, your climate engineering tutor. I am loaded with "${currentChapter?.title || course.title}". Ask me any questions, request an analogy, or clarify quiz questions at any time!`
     }
   ]);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -156,7 +164,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
         ...prev,
         {
           sender: 'mentor',
-          text: `You are now on "${currentChapter.title}". Ask me to explain any key terms, provide extra real-world examples, or clarify quiz questions.`
+          text: `You are now studying "${currentChapter.title}". Ask me to explain any key terms, walk through calculations, or break down practical exercises.`
         }
       ]);
     }
@@ -170,7 +178,6 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     setAiMessages(prev => [...prev, userMsg]);
     if (!promptText) setAiInput('');
     setAiLoading(true);
-    setAiError(null);
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -200,7 +207,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
           ...prev,
           {
             sender: 'mentor',
-            text: data.error || 'I am ready to help. Please try asking your question again.'
+            text: data.error || 'I am ready to help. Please ask your question again.'
           }
         ]);
       }
@@ -236,7 +243,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
 
     if (Object.keys(currentAnswers).length < totalQuestions) {
       setLockedNotice(`Please answer all ${totalQuestions} questions before submitting.`);
-      setTimeout(() => setLockedNotice(null), 3000);
+      setTimeout(() => setLockedNotice(null), 3500);
       return;
     }
 
@@ -248,7 +255,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     });
 
     const scorePercent = Math.round((correctCount / totalQuestions) * 100);
-    const passed = scorePercent >= currentChapter.quiz.passingScorePercent;
+    const passed = scorePercent >= (currentChapter.quiz.passingScorePercent || 80);
 
     const result = {
       passed,
@@ -291,7 +298,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     if (!currentChapter) return;
     const quizResult = chapterQuizResults[currentChapter.id];
     if (!quizResult || !quizResult.passed) {
-      setLockedNotice('You must pass the chapter quiz with at least 75% before marking this chapter as complete.');
+      setLockedNotice('You must pass the chapter quiz with at least 80% (4 of 5 correct) before marking this chapter complete.');
       setTimeout(() => setLockedNotice(null), 4000);
       return;
     }
@@ -311,12 +318,12 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
   // Navigation handlers
   const handleSelectChapter = (index: number) => {
     if (!isChapterUnlocked(index)) {
-      const prevCh = chapters[index - 1];
-      setLockedNotice(`Chapter ${index + 1} is locked. Complete Chapter ${index} and pass its quiz to unlock this chapter.`);
+      setLockedNotice(`Chapter ${index + 1} is locked. Complete Chapter ${index} and pass its quiz with at least 80% to unlock this chapter.`);
       setTimeout(() => setLockedNotice(null), 4500);
       return;
     }
     setCurrentChapterIndex(index);
+    setSidebarOpen(false); // close sidebar on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -334,7 +341,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
         setCurrentChapterIndex(nextIndex);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        setLockedNotice(`Please complete Chapter ${currentChapterIndex + 1} and pass its quiz to unlock the next chapter.`);
+        setLockedNotice(`Please complete Chapter ${currentChapterIndex + 1} and pass its quiz with 80% to unlock the next chapter.`);
         setTimeout(() => setLockedNotice(null), 4500);
       }
     }
@@ -347,54 +354,6 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
     setTimeout(() => {
       setReflectionSaved(prev => ({ ...prev, [currentChapter.id]: false }));
     }, 2500);
-  };
-
-  // Quick suggestion prompts for EcoMentor AI based on chapter
-  const getChapterSuggestedPrompts = (chNumber: number) => {
-    switch (chNumber) {
-      case 1:
-        return [
-          'What is embodied carbon vs operational carbon?',
-          'Why does extending device lifespan matter most?',
-          'Give me an example of Green IT in everyday business.'
-        ];
-      case 2:
-        return [
-          'What is vampire power and how do I stop it?',
-          'How do ACPI S3 sleep states work?',
-          'Why does dark mode only save power on OLED screens?'
-        ];
-      case 3:
-        return [
-          'What is urban mining and why is it cleaner than natural mining?',
-          'What are the key goals of the Right to Repair movement?',
-          'What does e-Stewards certification guarantee?'
-        ];
-      case 4:
-        return [
-          'What is a good PUE score in modern data centers?',
-          'How does liquid immersion cooling work?',
-          'How do data centers share waste heat with local communities?'
-        ];
-      case 5:
-        return [
-          'Explain the Software Carbon Intensity (SCI) formula in simple terms.',
-          'What is temporal shifting in carbon-aware computing?',
-          'How can web developers reduce network energy consumption?'
-        ];
-      case 6:
-        return [
-          'Why does dark data in cloud storage waste electrical energy?',
-          'Why does Wi-Fi use less power than 4G/5G mobile connections?',
-          'Give me three practical Green IT commitments for this week.'
-        ];
-      default:
-        return [
-          'Explain the key concept of this chapter.',
-          'Give me an analogy to understand this better.',
-          'Give me a practice question to test my knowledge.'
-        ];
-    }
   };
 
   const currentQuizResult = currentChapter ? chapterQuizResults[currentChapter.id] : null;
@@ -417,7 +376,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
           </button>
 
           <div className="truncate">
-            <div className="text-[11px] text-[#E8F0E8] font-medium uppercase tracking-wider">
+            <div className="text-[10px] sm:text-[11px] text-[#E8F0E8] font-medium uppercase tracking-wider">
               {course.category} · {course.level || 'Beginner'}
             </div>
             <h1 className="text-sm sm:text-base font-bold font-display truncate text-white">
@@ -426,13 +385,13 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
           </div>
         </div>
 
-        {/* Right Controls: Progress & AI Assistant Toggle */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Right Controls: Progress, Final Assessment, & AI Assistant Toggle */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           
           {/* Overall Progress Indicator */}
-          <div className="hidden sm:flex items-center gap-3 px-3.5 py-1.5 rounded-lg bg-[#1d5737] border border-[#246B45] text-xs">
+          <div className="hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-lg bg-[#1d5737] border border-[#246B45] text-xs">
             <div className="text-right">
-              <span className="text-[10px] text-[#E8F0E8] uppercase font-semibold">Course Progress</span>
+              <span className="text-[10px] text-[#E8F0E8] uppercase font-semibold">Curriculum Progress</span>
               <div className="font-mono font-bold text-white">
                 {completedChaptersCount} of {totalChaptersCount} Chapters ({progressPercent}%)
               </div>
@@ -444,6 +403,24 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
               />
             </div>
           </div>
+
+          {/* Final Assessment Trigger Button (Visible when unlocked) */}
+          {course.id === 'green-it' && (
+            <button
+              onClick={() => setShowFinalAssessmentModal(true)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ${
+                isAllChaptersCompleted
+                  ? 'bg-amber-400 text-amber-950 hover:bg-amber-300 ring-2 ring-amber-300/60 font-bold'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80'
+              }`}
+              title={isAllChaptersCompleted ? 'Start 60-Mark Final Assessment' : 'Complete all 6 chapters to unlock'}
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Final Assessment (60M)</span>
+              <span className="sm:hidden">Exam</span>
+              {!isAllChaptersCompleted && <Lock className="w-3 h-3 opacity-60" />}
+            </button>
+          )}
 
           {/* EcoMentor AI Toggle Button */}
           <button
@@ -459,7 +436,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
             <span className="sm:hidden">AI</span>
           </button>
 
-          {/* Mobile Sidebar Toggle */}
+          {/* Mobile Sidebar Toggle Button */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="lg:hidden p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
@@ -481,20 +458,28 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
       {/* 2. MAIN LAYOUT: Sidebar + Content Area + EcoMentor Drawer */}
       <div className="flex-1 flex overflow-hidden relative">
         
+        {/* Backdrop for mobile sidebar */}
+        {sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-black/50 z-25 lg:hidden"
+          />
+        )}
+
         {/* SIDEBAR: Curriculum & Sequential Chapter List */}
         <aside
           className={`${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-80'
-          } fixed lg:static inset-y-16 left-0 w-80 bg-white border-r border-gray-200 z-30 flex flex-col transition-transform duration-200 shadow-lg lg:shadow-none shrink-0`}
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          } fixed lg:static inset-y-16 left-0 w-80 bg-white border-r border-gray-200 z-30 flex flex-col transition-transform duration-200 shadow-xl lg:shadow-none shrink-0`}
         >
           {/* Sidebar Header */}
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <div className="text-[11px] font-semibold text-[#246B45] uppercase tracking-wider">
-                Curriculum
+                Curriculum Structure
               </div>
               <h2 className="text-sm font-bold text-[#252925]">
-                Course Chapters
+                Course Chapters & Exam
               </h2>
             </div>
             <button
@@ -560,7 +545,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                       </span>
                     </div>
 
-                    {/* Status Badge */}
+                    {/* Status Label */}
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
                         status === 'Completed'
@@ -584,19 +569,74 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                     <Clock className="w-3 h-3" />
                     <span>{chapter.durationMinutes} mins</span>
                     {chapterQuizResults[chapter.id]?.passed && (
-                      <span className="text-emerald-600 font-medium">· Quiz Passed ({chapterQuizResults[chapter.id].scorePercent}%)</span>
+                      <span className="text-emerald-700 font-semibold">· Quiz Passed ({chapterQuizResults[chapter.id].scorePercent}%)</span>
                     )}
                   </div>
                 </button>
               );
             })}
+
+            {/* Final Assessment Item in Sidebar */}
+            {course.id === 'green-it' && (
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    if (isAllChaptersCompleted) {
+                      setShowFinalAssessmentModal(true);
+                      setSidebarOpen(false);
+                    } else {
+                      setLockedNotice('Final Assessment is locked. Complete all 6 chapters and pass each chapter quiz with at least 80% to unlock.');
+                      setTimeout(() => setLockedNotice(null), 4500);
+                    }
+                  }}
+                  className={`w-full text-left p-3 rounded-xl transition-all border ${
+                    isAllChaptersCompleted
+                      ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-950 cursor-pointer shadow-xs'
+                      : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Award className={`w-4 h-4 ${isAllChaptersCompleted ? 'text-amber-600' : 'text-gray-400'}`} />
+                      <span className="text-xs font-bold">
+                        Final Assessment
+                      </span>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        finalAssessmentPassed
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : isAllChaptersCompleted
+                          ? 'bg-amber-200 text-amber-900 font-bold'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {finalAssessmentPassed ? 'Passed' : isAllChaptersCompleted ? 'Unlocked' : 'Locked'}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 pl-6 text-xs font-medium">
+                    60 Marks · 30 Questions (80% to Pass)
+                  </div>
+
+                  <div className="mt-1 pl-6 text-[11px] text-gray-500">
+                    {finalAssessmentPassed
+                      ? 'Assessment completed. Certificate earned!'
+                      : isAllChaptersCompleted
+                      ? 'Eligible to take examination now'
+                      : 'Requires completion of Chapters 1-6'}
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Quick Help Footer */}
           <div className="p-3 border-t border-gray-100 bg-[#fafbf9] text-xs text-[#59655b] flex items-center justify-between">
             <span className="flex items-center gap-1 text-[11px]">
               <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
-              <span>Questions lock until prior chapter is passed</span>
+              <span>Sequential progression enforces real learning</span>
             </span>
           </div>
         </aside>
@@ -639,37 +679,103 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
           <section className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-3 shadow-xs">
             <div className="flex items-center gap-2 text-xs font-bold text-[#246B45] uppercase tracking-wider">
               <BookOpen className="w-4 h-4 text-[#246B45]" />
-              <span>Learning Objectives</span>
+              <span>Measurable Learning Objectives</span>
             </div>
             <ul className="space-y-2 text-xs sm:text-sm text-[#252925]">
               {currentChapter.learningObjectives.map((obj, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-[#246B45] shrink-0 mt-0.5" />
-                  <span>{obj}</span>
+                  <span className="leading-relaxed">{obj}</span>
                 </li>
               ))}
             </ul>
           </section>
 
-          {/* 2. Beginner-Friendly Lesson Content */}
-          <section className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 space-y-5 shadow-xs">
-            <div className="text-xs font-bold text-[#246B45] uppercase tracking-wider border-b border-gray-100 pb-2">
-              Lesson Content
+          {/* 2. Chapter Video Notice (Genuine Handling) */}
+          <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 flex items-start gap-3 shadow-xs">
+            <div className="w-9 h-9 rounded-lg bg-[#E8F0E8] text-[#246B45] flex items-center justify-center shrink-0 mt-0.5">
+              <Video className="w-4 h-4" />
             </div>
-
-            <div className="space-y-4 text-sm sm:text-base text-[#252925] leading-relaxed">
-              {currentChapter.lessonContent.map((paragraph, i) => (
-                <p key={i} className="leading-relaxed">
-                  {paragraph}
-                </p>
-              ))}
+            <div className="space-y-1 text-xs sm:text-sm">
+              <div className="font-bold text-[#252925]">
+                Chapter Video Material Status
+              </div>
+              <p className="text-[#59655b] leading-relaxed">
+                {currentChapter.video?.status === 'verified' && currentChapter.video?.url ? (
+                  <span>Verified educational video available for this lesson.</span>
+                ) : (
+                  <span>
+                    No video is currently available for this chapter. The complete, rigorous reading material, practical examples, and exercises are fully accessible in text format below.
+                  </span>
+                )}
+              </p>
             </div>
           </section>
 
-          {/* 3. Practical Real-World Examples */}
+          {/* 3. Detailed Lesson Content organized into structured sections */}
+          <section className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 space-y-8 shadow-xs">
+            <div className="border-b border-gray-100 pb-3">
+              <div className="text-xs font-bold text-[#246B45] uppercase tracking-wider">
+                Comprehensive Lesson Material
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-[#252925] mt-0.5">
+                Detailed Technical Reading & Principles
+              </h2>
+            </div>
+
+            {/* If structured sections exist, render with headings and highlighted key terms */}
+            {currentChapter.sections && currentChapter.sections.length > 0 ? (
+              <div className="space-y-8">
+                {currentChapter.sections.map((section, sIdx) => (
+                  <div key={sIdx} className="space-y-4">
+                    <h3 className="text-base sm:text-lg font-bold text-[#246B45] font-display">
+                      {section.title}
+                    </h3>
+
+                    <div className="space-y-3.5 text-sm sm:text-base text-[#252925] leading-relaxed">
+                      {section.paragraphs.map((p, pIdx) => (
+                        <p key={pIdx} className="leading-relaxed">
+                          {p}
+                        </p>
+                      ))}
+                    </div>
+
+                    {/* Highlighted Key Terms if provided */}
+                    {section.keyTerms && section.keyTerms.length > 0 && (
+                      <div className="mt-4 p-4 rounded-xl bg-[#fafbf9] border border-gray-200 space-y-2.5">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-[#246B45]">
+                          Key Terminology & Definitions:
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                          {section.keyTerms.map((item, tIdx) => (
+                            <div key={tIdx} className="p-2.5 rounded-lg bg-white border border-gray-200 text-xs space-y-1">
+                              <span className="font-bold text-[#252925] block">{item.term}</span>
+                              <span className="text-[#59655b] leading-relaxed block">{item.definition}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Fallback to lessonContent paragraphs */
+              <div className="space-y-4 text-sm sm:text-base text-[#252925] leading-relaxed">
+                {currentChapter.lessonContent.map((paragraph, i) => (
+                  <p key={i} className="leading-relaxed">
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 4. Practical Real-World IT Environment Examples */}
           <section className="space-y-4">
-            <div className="text-xs font-bold text-[#246B45] uppercase tracking-wider">
-              Practical Real-World Examples
+            <div className="flex items-center gap-2 text-xs font-bold text-[#246B45] uppercase tracking-wider">
+              <Lightbulb className="w-4 h-4 text-[#246B45]" />
+              <span>Real-World IT Environment Examples</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -679,7 +785,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                   className="bg-white rounded-xl border border-gray-200 p-5 space-y-2 hover:border-[#246B45]/40 transition-colors shadow-xs"
                 >
                   <div className="text-xs font-bold text-[#246B45]">
-                    Example {i + 1}: {ex.title}
+                    Case Study {i + 1}: {ex.title}
                   </div>
                   <p className="text-xs sm:text-sm text-[#59655b] leading-relaxed">
                     {ex.description}
@@ -689,11 +795,29 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
             </div>
           </section>
 
-          {/* 4. Short Activity or Reflection Task */}
+          {/* 5. Best Practices & Principles */}
+          {currentChapter.bestPractices && currentChapter.bestPractices.length > 0 && (
+            <section className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-3 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#246B45] uppercase tracking-wider">
+                <CheckCircle2 className="w-4 h-4 text-[#246B45]" />
+                <span>Industry Principles & Recommended Best Practices</span>
+              </div>
+              <ul className="space-y-2 text-xs sm:text-sm text-[#252925]">
+                {currentChapter.bestPractices.map((bp, i) => (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#246B45] mt-2 shrink-0" />
+                    <span className="leading-relaxed">{bp}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* 6. Practical Activity & Reflection Exercise */}
           <section className="bg-[#E8F0E8]/50 rounded-xl border border-[#246B45]/20 p-5 sm:p-6 space-y-4">
             <div className="flex items-center gap-2 text-xs font-bold text-[#246B45] uppercase tracking-wider">
               <Sparkles className="w-4 h-4 text-[#246B45]" />
-              <span>Activity & Reflection Task</span>
+              <span>Practical Activity & Reflection Task</span>
             </div>
 
             <div className="space-y-2">
@@ -707,13 +831,13 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
 
             <div className="space-y-2 pt-2">
               <label className="block text-xs font-semibold text-[#252925]">
-                Your Reflection Notes:
+                Your Activity Notes & Action Plan:
               </label>
               <textarea
                 rows={3}
                 value={reflectionInputs[currentChapter.id] || ''}
                 onChange={(e) => setReflectionInputs({ ...reflectionInputs, [currentChapter.id]: e.target.value })}
-                placeholder="Type your reflection or action plan notes here..."
+                placeholder="Document your specific findings, audit results, or implementation commitments..."
                 className="w-full p-3 text-xs sm:text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#246B45]"
               />
               <div className="flex items-center justify-between">
@@ -721,29 +845,47 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                   onClick={handleSaveReflection}
                   className="px-3.5 py-1.5 rounded-lg bg-[#246B45] text-white text-xs font-semibold hover:bg-[#1d5737] cursor-pointer"
                 >
-                  Save My Reflection
+                  Save Activity Notes
                 </button>
                 {reflectionSaved[currentChapter.id] && (
                   <span className="text-xs text-[#246B45] font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Reflection saved</span>
+                    <span>Notes recorded</span>
                   </span>
                 )}
               </div>
             </div>
           </section>
 
-          {/* 5. Chapter Quiz */}
+          {/* 7. Chapter Summary */}
+          {currentChapter.summary && currentChapter.summary.length > 0 && (
+            <section className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-3 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#246B45] uppercase tracking-wider">
+                <FileText className="w-4 h-4 text-[#246B45]" />
+                <span>Chapter Summary</span>
+              </div>
+              <ul className="space-y-2 text-xs sm:text-sm text-[#252925]">
+                {currentChapter.summary.map((pt, i) => (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <Check className="w-4 h-4 text-[#246B45] shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* 8. Chapter Quiz (5 Multiple-Choice Questions) */}
           <section className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 space-y-6 shadow-xs">
             <div className="border-b border-gray-100 pb-4">
               <div className="text-xs font-bold text-[#246B45] uppercase tracking-wider mb-1">
-                Chapter Quiz
+                Chapter Assessment Quiz
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-[#252925]">
-                Test Your Understanding
+                Chapter {currentChapter.chapterNumber} Knowledge Check
               </h2>
               <p className="text-xs text-[#59655b] mt-1">
-                Answer all questions below. Pass with at least 75% to unlock Chapter {currentChapter.chapterNumber + 1}.
+                Answer all 5 questions below. Score at least 80% (4 of 5 correct) to unlock Chapter {currentChapter.chapterNumber + 1}.
               </p>
             </div>
 
@@ -764,13 +906,13 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                   )}
                   <div>
                     <div className="text-sm font-bold">
-                      {currentQuizResult.passed ? 'Quiz Passed!' : 'Quiz Score Below 75%'}
+                      {currentQuizResult.passed ? 'Chapter Quiz Passed!' : 'Quiz Score Below 80%'}
                     </div>
                     <div className="text-xs">
                       You scored {currentQuizResult.scorePercent}% ({currentQuizResult.correctCount} of {currentQuizResult.totalQuestions} correct).
                       {currentQuizResult.passed
-                        ? ' Great work! You met the requirement to complete this chapter.'
-                        : ' Review the explanations below and try again to unlock the next chapter.'}
+                        ? ' Excellent! You have satisfied the requirement for this chapter.'
+                        : ' Review the explanations below and retake the quiz to unlock the next chapter.'}
                     </div>
                   </div>
                 </div>
@@ -786,18 +928,18 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
               </div>
             )}
 
-            {/* Questions List */}
+            {/* 5 Questions List */}
             <div className="space-y-6">
               {currentChapter.quiz.questions.map((q, qIndex) => {
                 const userSelected = (chapterQuizAnswers[currentChapter.id] || {})[q.id];
                 const isSubmitted = Boolean(currentQuizResult);
 
                 return (
-                  <div key={q.id} className="space-y-3 p-4 bg-[#fafbf9] rounded-xl border border-gray-200">
+                  <div key={q.id} className="space-y-3 p-4 sm:p-5 bg-[#fafbf9] rounded-xl border border-gray-200">
                     <div className="text-xs font-bold text-[#246B45]">
                       Question {qIndex + 1} of {currentChapter.quiz.questions.length}
                     </div>
-                    <h4 className="text-sm sm:text-base font-semibold text-[#252925]">
+                    <h4 className="text-sm sm:text-base font-semibold text-[#252925] leading-relaxed">
                       {q.questionText}
                     </h4>
 
@@ -831,13 +973,13 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                               onChange={() => handleSelectQuizOption(q.id, optIndex)}
                               className="mt-0.5 text-[#246B45] focus:ring-[#246B45]"
                             />
-                            <span className="flex-1">{opt}</span>
+                            <span className="flex-1 leading-relaxed">{opt}</span>
                           </label>
                         );
                       })}
                     </div>
 
-                    {/* Feedback and Explanation */}
+                    {/* Explanation Feedback */}
                     {isSubmitted && (
                       <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200 text-xs text-[#59655b] space-y-1">
                         <span className="font-bold text-[#252925]">Explanation: </span>
@@ -856,26 +998,26 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                   onClick={handleSubmitChapterQuiz}
                   className="px-5 py-2.5 rounded-lg bg-[#246B45] hover:bg-[#1d5737] text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
                 >
-                  Submit Quiz Answers
+                  Submit Chapter Quiz Answers
                 </button>
               </div>
             )}
           </section>
 
-          {/* 6. Mark Chapter as Complete Button */}
+          {/* 9. Mark Chapter Complete Control */}
           <section className="bg-white rounded-xl border border-gray-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
             <div>
               <div className="text-sm font-bold text-[#252925]">
                 {currentChapterIsCompleted
                   ? 'Chapter Completed'
-                  : 'Ready to Complete This Chapter?'}
+                  : 'Complete Chapter Requirements'}
               </div>
               <p className="text-xs text-[#59655b] mt-0.5">
                 {currentChapterIsCompleted
-                  ? 'You have completed this chapter and unlocked the following content.'
+                  ? 'You have completed this chapter and unlocked subsequent learning modules.'
                   : currentQuizPassed
                   ? 'You passed the chapter quiz! Click below to record completion and unlock the next chapter.'
-                  : 'Complete the chapter quiz with at least 75% to mark this chapter as complete.'}
+                  : 'Score at least 80% on the chapter quiz to unlock the next chapter.'}
               </p>
             </div>
 
@@ -893,13 +1035,43 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                 {currentChapterIsCompleted
                   ? 'Chapter Completed'
                   : markingChapterComplete
-                  ? 'Saving...'
+                  ? 'Recording...'
                   : 'Mark Chapter as Complete'}
               </span>
             </button>
           </section>
 
-          {/* 7. Next & Previous Navigation Buttons */}
+          {/* Celebratory Final Assessment Card when all 6 chapters completed */}
+          {course.id === 'green-it' && isAllChaptersCompleted && (
+            <section className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-sm animate-in fade-in">
+              <div className="flex items-center gap-4 text-center sm:text-left">
+                <div className="w-12 h-12 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center shrink-0 shadow-xs">
+                  <Award className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                    All Six Chapters Completed
+                  </div>
+                  <h3 className="text-lg font-bold text-amber-950">
+                    Green IT Fundamentals – Final Assessment (60 Marks)
+                  </h3>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Pass with at least 48/60 marks (80%) across 30 questions to earn your official Certificate of Completion.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowFinalAssessmentModal(true)}
+                className="px-5 py-3 rounded-xl bg-[#246B45] hover:bg-[#1d5737] text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-sm shrink-0"
+              >
+                <span>{finalAssessmentPassed ? 'Review Assessment Results' : 'Start Final Assessment'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </section>
+          )}
+
+          {/* 10. Next & Previous Navigation Buttons */}
           <nav aria-label="Chapter Navigation" className="flex items-center justify-between gap-4 pt-4 border-t border-gray-200">
             <button
               onClick={handlePreviousChapter}
@@ -923,7 +1095,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
                     ? 'bg-[#246B45] text-white hover:bg-[#1d5737] shadow-xs'
                     : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                 }`}
-                title={isNextChapterUnlocked ? 'Proceed to next chapter' : 'Pass quiz to unlock'}
+                title={isNextChapterUnlocked ? 'Proceed to next chapter' : 'Pass quiz with 80% to unlock'}
               >
                 <span>Next: Chapter {currentChapterIndex + 2}</span>
                 {isNextChapterUnlocked ? (
@@ -934,18 +1106,28 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
               </button>
             ) : (
               <button
-                onClick={onExit}
-                className="px-4 py-2 rounded-lg bg-[#246B45] text-white text-xs font-semibold hover:bg-[#1d5737] flex items-center gap-1.5 cursor-pointer shadow-xs"
+                onClick={() => {
+                  if (course.id === 'green-it' && isAllChaptersCompleted) {
+                    setShowFinalAssessmentModal(true);
+                  } else {
+                    onExit();
+                  }
+                }}
+                className="px-5 py-2.5 rounded-lg bg-[#246B45] text-white text-xs font-semibold hover:bg-[#1d5737] flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Finish Course</span>
+                <span>
+                  {course.id === 'green-it' && isAllChaptersCompleted
+                    ? 'Take Final Assessment'
+                    : 'Return to Dashboard'}
+                </span>
               </button>
             )}
           </nav>
 
         </main>
 
-        {/* 3. ECOMENTOR AI INTEGRATION DRAWER (Accessible without leaving the lesson) */}
+        {/* 3. ECOMENTOR AI DRAWER (Side sheet) */}
         <aside
           className={`${
             aiDrawerOpen ? 'translate-x-0' : 'translate-x-full'
@@ -960,7 +1142,7 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-[#252925]">EcoMentor AI Tutor</h3>
                 <div className="text-[11px] text-[#246B45] font-semibold truncate max-w-[180px]">
-                  Loaded: Chapter {currentChapter.chapterNumber}
+                  Context: Chapter {currentChapter.chapterNumber}
                 </div>
               </div>
             </div>
@@ -996,24 +1178,6 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
             <div ref={chatScrollRef} />
           </div>
 
-          {/* Quick Prompts for Current Chapter */}
-          <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 space-y-1.5">
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-              Suggested questions for Chapter {currentChapter.chapterNumber}:
-            </div>
-            <div className="flex flex-col gap-1">
-              {getChapterSuggestedPrompts(currentChapter.chapterNumber).map((prompt, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSendAiMessage(prompt)}
-                  className="text-left text-[11px] text-[#246B45] hover:underline truncate cursor-pointer"
-                >
-                  · {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Input Box */}
           <div className="p-3 border-t border-gray-200 bg-white">
             <form
@@ -1042,6 +1206,29 @@ export const CoursePlayer: React.FC<CoursePlayerProps> = ({
         </aside>
 
       </div>
+
+      {/* FINAL ASSESSMENT MODAL */}
+      {showFinalAssessmentModal && (
+        <GreenItFinalAssessmentModal
+          onClose={() => setShowFinalAssessmentModal(false)}
+          onClaimCertificateSuccess={(cert) => {
+            setShowFinalAssessmentModal(false);
+            setViewingCertificate(cert);
+            if (onCertificateClaimed) {
+              onCertificateClaimed(cert);
+            }
+          }}
+        />
+      )}
+
+      {/* CERTIFICATE MODAL */}
+      {viewingCertificate && (
+        <CertificateModal
+          certificate={viewingCertificate}
+          onClose={() => setViewingCertificate(null)}
+        />
+      )}
+
     </div>
   );
 };

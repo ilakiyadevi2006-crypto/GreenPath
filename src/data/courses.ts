@@ -131,9 +131,9 @@ export const LEARNING_PATHS: LearningPath[] = [
       'Green Software Foundation SCI Specification Guide'
     ],
     finalAssessmentRequirements: [
-      'Complete all 6 Green IT Fundamentals chapters and exercises',
-      'Pass each chapter quiz with 75% or higher to unlock sequential progression',
-      'Pass the comprehensive course assessment quiz with 80% or higher to claim credential'
+      'Complete all 6 Green IT Fundamentals chapters, reading sections, and exercises',
+      'Pass each chapter quiz with 80% or higher to unlock sequential chapter progression',
+      'Pass the comprehensive course final assessment (60 marks) with at least 80% (minimum 48/60 marks) to earn the accredited credential'
     ],
     chapters: GREEN_IT_CHAPTERS,
     syllabus: GREEN_IT_CHAPTERS.map(ch => ({

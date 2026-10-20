@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LEARNING_PATHS } from '../data/courses';
+import { CertificateModal } from './CertificateModal';
 import {
   Award, ShieldCheck, CheckCircle2, QrCode, Copy, Check, ExternalLink,
   Printer, ArrowRight, Compass, Clock, FileCheck
@@ -257,96 +258,12 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({
         )}
       </div>
 
-      {/* 4. Certificate Specimen Modal */}
+      {/* 4. Certificate Modal */}
       {selectedCert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-[#123e2b]/20 shadow-2xl max-w-2xl w-full my-6 overflow-hidden">
-            
-            {/* Modal Header */}
-            <div className="p-4 px-6 bg-[#0b291b] text-white flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#a3e635]">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Verified Digital Credential Specimen</span>
-              </div>
-              <button
-                onClick={() => setSelectedCert(null)}
-                className="p-1 rounded-lg hover:bg-white/10 text-[#cadbce] hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Certificate Canvas / Certificate Specimen Layout */}
-            <div className="p-8 sm:p-12 bg-[#fafbf9] border-8 border-double border-[#123e2b]/20 m-6 rounded-2xl text-center space-y-6">
-              
-              <div className="space-y-1">
-                <div className="w-12 h-12 rounded-2xl bg-[#0b291b] text-[#a3e635] flex items-center justify-center mx-auto mb-2 font-bold font-display text-xl">
-                  GP
-                </div>
-                <div className="text-xs uppercase tracking-widest text-[#184e34] font-semibold">
-                  GreenPath Digital Learning Academy
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-[#0b291b]">
-                  Certificate of Competency
-                </h3>
-              </div>
-
-              <div className="text-xs text-[#5b7b68]">
-                This is to certify that
-              </div>
-
-              <div className="text-2xl sm:text-3xl font-display font-bold text-[#0b291b] border-b border-[#123e2b]/20 pb-2 max-w-md mx-auto">
-                {selectedCert.learnerName}
-              </div>
-
-              <p className="text-xs text-[#486352] max-w-lg mx-auto leading-relaxed">
-                has successfully completed the audited curriculum and satisfied all required technical assessments (Score: {selectedCert.scorePercent}%) for:
-              </p>
-
-              <div className="text-lg sm:text-xl font-bold font-display text-[#184e34]">
-                {selectedCert.courseTitle}
-              </div>
-
-              <div className="pt-4 border-t border-[#123e2b]/15 grid grid-cols-2 gap-4 text-xs text-[#5b7b68] text-left">
-                <div>
-                  <div className="text-[10px] uppercase font-semibold text-[#184e34]">Credential ID</div>
-                  <div className="font-mono font-bold text-[#0b291b]">{selectedCert.id}</div>
-                  <div className="text-[10px] mt-0.5">Issue Date: {new Date(selectedCert.issuedAt).toLocaleDateString()}</div>
-                </div>
-
-                <div className="text-right">
-                  <div className="text-[10px] uppercase font-semibold text-[#184e34]">Accredited Alignment</div>
-                  <div className="text-[11px] font-semibold text-[#0b291b]">ISO 14064 & GHG Protocol</div>
-                  <div className="text-[10px] text-[#65a30d] font-bold">Registry Verified</div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Modal Footer Controls */}
-            <div className="p-4 px-6 bg-white border-t border-[#123e2b]/10 flex items-center justify-between">
-              <span className="text-xs font-mono text-[#5b7b68]">
-                Hash: {selectedCert.id}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 rounded-xl border border-[#123e2b]/20 text-xs font-semibold text-[#0b291b] hover:bg-slate-50 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print Specimen</span>
-                </button>
-                <button
-                  onClick={() => setSelectedCert(null)}
-                  className="px-5 py-2 rounded-xl bg-[#0b291b] text-white text-xs font-semibold hover:bg-[#123e2b] cursor-pointer"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
+        <CertificateModal
+          certificate={selectedCert}
+          onClose={() => setSelectedCert(null)}
+        />
       )}
 
     </div>

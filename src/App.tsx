@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar, NavigationView } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -19,6 +19,15 @@ import { Footer } from './components/Footer';
 import { LearningPath } from './types';
 import { LEARNING_PATHS } from './data/courses';
 
+const scrollToPageTop = () => {
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+  } catch {
+    // fallback
+  }
+  window.scrollTo(0, 0);
+};
+
 function MainApp() {
   const { user, enrollCourse, logout } = useAuth();
 
@@ -31,6 +40,38 @@ function MainApp() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [pendingEnrollCourse, setPendingEnrollCourse] = useState<LearningPath | null>(null);
 
+  // Synchronize with browser History API so Back and Forward work correctly
+  useEffect(() => {
+    if (!window.history.state || !window.history.state.view) {
+      window.history.replaceState({ view: 'home' }, '', window.location.pathname);
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      const targetView: NavigationView = state?.view || 'home';
+
+      if (targetView === 'course-details' && state?.courseId) {
+        const found = LEARNING_PATHS.find(c => c.id === state.courseId);
+        if (found) {
+          setSelectedCourseForDetail(found);
+        }
+      }
+
+      setPlayerCourse(null);
+      setPlayerInitialLessonId(undefined);
+      setCurrentView(targetView);
+      scrollToPageTop();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Guarantee that navigating to any page starts at the top of that page
+  useEffect(() => {
+    scrollToPageTop();
+  }, [currentView, selectedCourseForDetail]);
+
   const handleNavigate = (view: NavigationView) => {
     if (view === 'my-learning' || view === 'profile') {
       if (!user) {
@@ -39,8 +80,17 @@ function MainApp() {
         return;
       }
     }
+
+    if (playerCourse) {
+      setPlayerCourse(null);
+      setPlayerInitialLessonId(undefined);
+    }
+
     setCurrentView(view);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (view !== window.history.state?.view) {
+      window.history.pushState({ view }, '', window.location.pathname);
+    }
+    scrollToPageTop();
   };
 
   const handleEnrollClick = async (course: LearningPath) => {
@@ -59,14 +109,15 @@ function MainApp() {
       setPlayerCourse(pendingEnrollCourse);
       setPendingEnrollCourse(null);
     } else {
-      setCurrentView('my-learning');
+      handleNavigate('my-learning');
     }
   };
 
   const handleOpenCourseDetails = (course: LearningPath) => {
     setSelectedCourseForDetail(course);
     setCurrentView('course-details');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.history.pushState({ view: 'course-details', courseId: course.id }, '', window.location.pathname);
+    scrollToPageTop();
   };
 
   const handleOpenPlayerFromCourseId = (courseId: string, lessonId?: string) => {
@@ -217,6 +268,7 @@ function MainApp() {
           onExit={() => {
             setPlayerCourse(null);
             setPlayerInitialLessonId(undefined);
+            scrollToPageTop();
           }}
           onCertificateClaimed={() => {
             // refresh data handled inside AuthContext

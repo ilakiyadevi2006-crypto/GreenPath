@@ -41,6 +41,22 @@ interface AuthContextType {
     correctCount: number,
     totalQuestions: number
   ) => Promise<boolean>;
+  fetchFinalAssessment: (courseId: string) => Promise<{
+    locked: boolean;
+    reason?: string;
+    assessment?: any;
+    previousAttempts?: any[];
+    bestScoreMarks?: number;
+    bestScorePercent?: number;
+    passed?: boolean;
+    completedCount?: number;
+    requiredCount?: number;
+  }>;
+  submitFinalAssessment: (courseId: string, answers: Record<string, number>) => Promise<{
+    success: boolean;
+    data?: any;
+    error?: string;
+  }>;
   claimCourseCertificate: (courseId: string, courseTitle: string, totalLessonsCount: number) => Promise<{
     success: boolean;
     certificate?: any;
@@ -333,6 +349,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const fetchFinalAssessment = async (courseId: string) => {
+    try {
+      const res = await fetch(`/api/courses/${courseId}/final-assessment`, {
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      return { locked: true, reason: err.message || 'Error fetching final assessment.' };
+    }
+  };
+
+  const submitFinalAssessment = async (courseId: string, answers: Record<string, number>) => {
+    if (!user) {
+      return { success: false, error: 'Authentication required. Please sign in.' };
+    }
+    try {
+      const res = await fetch(`/api/courses/${courseId}/final-assessment/submit`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ answers })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to evaluate assessment submission.' };
+      }
+      await refreshUserData();
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error evaluating assessment.' };
+    }
+  };
+
   const claimCourseCertificate = async (
     courseId: string,
     courseTitle: string,
@@ -473,6 +522,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markLessonComplete,
         submitCourseQuiz,
         submitChapterQuiz,
+        fetchFinalAssessment,
+        submitFinalAssessment,
         claimCourseCertificate,
         saveNote,
         deleteNote,

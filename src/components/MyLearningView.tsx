@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LEARNING_PATHS } from '../data/courses';
 import { LearningPath, SyllabusLesson } from '../types';
+import { CertificateModal } from './CertificateModal';
+import { GreenItFinalAssessmentModal } from './GreenItFinalAssessmentModal';
 import {
   BookOpen, Award, CheckCircle2, Clock, Sparkles, ArrowRight,
   ShieldCheck, PlayCircle, Calendar, FileText, ChevronRight,
@@ -34,6 +36,8 @@ export const MyLearningView: React.FC<MyLearningViewProps> = ({
     data?: any;
     error?: string;
   } | null>(null);
+  const [selectedCertificate, setSelectedCertificate] = useState<any | null>(null);
+  const [showFinalAssessmentModal, setShowFinalAssessmentModal] = useState(false);
 
   useEffect(() => {
     if (initialTab) {
@@ -325,9 +329,18 @@ export const MyLearningView: React.FC<MyLearningViewProps> = ({
                             Attempted ({course.enrollment.quizResult?.scorePercent}%) - Retake to pass (80% needed)
                           </span>
                         ) : progressPercent === 100 ? (
-                          <span className="text-[#246B45] font-semibold">
-                            Ready for Final Assessment
-                          </span>
+                          <button
+                            onClick={() => {
+                              if (course.id === 'green-it') {
+                                setShowFinalAssessmentModal(true);
+                              } else {
+                                onOpenPlayer(course);
+                              }
+                            }}
+                            className="text-[#246B45] hover:text-[#1d5737] font-bold underline cursor-pointer"
+                          >
+                            Ready for Final Assessment (60M) →
+                          </button>
                         ) : (
                           <span className="text-gray-400">
                             Complete all chapters to unlock final assessment
@@ -335,14 +348,25 @@ export const MyLearningView: React.FC<MyLearningViewProps> = ({
                         )}
                       </div>
 
-                      {isPassed && !course.enrollment.certificateClaimedId && (
+                      {course.enrollment.certificateClaimedId ? (
+                        <button
+                          onClick={() => {
+                            const cert = certificates.find(c => c.id === course.enrollment.certificateClaimedId || c.courseId === course.id);
+                            if (cert) setSelectedCertificate(cert);
+                          }}
+                          className="text-xs font-bold text-[#246B45] hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>View Certificate</span>
+                        </button>
+                      ) : isPassed ? (
                         <button
                           onClick={() => onOpenPlayer(course)}
-                          className="text-xs font-semibold text-[#246B45] hover:underline"
+                          className="text-xs font-semibold text-[#246B45] hover:underline cursor-pointer"
                         >
                           Claim Certificate →
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -524,12 +548,11 @@ export const MyLearningView: React.FC<MyLearningViewProps> = ({
                       Verification ID: {cert.id}
                     </div>
                     <button
-                      onClick={() => {
-                        window.print();
-                      }}
-                      className="text-xs font-semibold text-[#246B45] hover:underline cursor-pointer"
+                      onClick={() => setSelectedCertificate(cert)}
+                      className="text-xs font-semibold text-[#246B45] hover:underline cursor-pointer flex items-center gap-1.5"
                     >
-                      Print or Download Certificate
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#246B45]" />
+                      <span>View, Print or Download Certificate</span>
                     </button>
                   </div>
                 </div>
@@ -537,6 +560,23 @@ export const MyLearningView: React.FC<MyLearningViewProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* Modals */}
+      {showFinalAssessmentModal && (
+        <GreenItFinalAssessmentModal
+          onClose={() => setShowFinalAssessmentModal(false)}
+          onClaimCertificateSuccess={(cert) => {
+            setSelectedCertificate(cert);
+          }}
+        />
+      )}
+
+      {selectedCertificate && (
+        <CertificateModal
+          certificate={selectedCertificate}
+          onClose={() => setSelectedCertificate(null)}
+        />
       )}
 
     </div>

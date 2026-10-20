@@ -45,29 +45,6 @@ export interface User {
   createdAt: string;
 }
 
-export interface UserEnrollment {
-  id: string;
-  courseId: string;
-  enrolledAt: string;
-  completedLessons: string[];
-  currentLessonId?: string;
-  chapterQuizResults?: Record<string, {
-    passed: boolean;
-    scorePercent: number;
-    correctCount: number;
-    totalQuestions: number;
-    completedAt: string;
-  }>;
-  quizResult?: {
-    passed: boolean;
-    scorePercent: number;
-    correctCount: number;
-    totalQuestions: number;
-    completedAt: string;
-  };
-  certificateClaimedId?: string;
-}
-
 export interface UserActivity {
   id: string;
   userId: string;
@@ -98,6 +75,12 @@ export interface ChapterVideo {
   sourceNote?: string;
 }
 
+export interface ChapterSection {
+  title: string;
+  paragraphs: string[];
+  keyTerms?: { term: string; definition: string }[];
+}
+
 export interface CourseChapter {
   id: string;
   chapterNumber: number;
@@ -106,13 +89,69 @@ export interface CourseChapter {
   durationMinutes: number;
   learningObjectives: string[];
   lessonContent: string[];
+  sections?: ChapterSection[];
   practicalExamples: ChapterPracticalExample[];
+  bestPractices?: string[];
   activityTask: ChapterActivity;
+  summary?: string[];
   video?: ChapterVideo;
   quiz: {
     passingScorePercent: number;
     questions: QuizQuestion[];
   };
+}
+
+export interface FinalAssessmentQuestion {
+  id: string;
+  questionText: string;
+  options: string[];
+  marks: number;
+  chapterNumber: number;
+  chapterTitle: string;
+  correctAnswerIndex?: number;
+  explanation?: string;
+}
+
+export interface FinalAssessmentAttempt {
+  attemptNumber: number;
+  scoreMarks: number;
+  totalMarks: number;
+  scorePercent: number;
+  passed: boolean;
+  completedAt: string;
+  chapterFeedback?: Record<number, { chapterTitle: string; score: number; total: number; needsImprovement: boolean }>;
+}
+
+export interface UserEnrollment {
+  id: string;
+  courseId: string;
+  enrolledAt: string;
+  completedLessons: string[];
+  currentLessonId?: string;
+  chapterQuizResults?: Record<string, {
+    passed: boolean;
+    scorePercent: number;
+    correctCount: number;
+    totalQuestions: number;
+    completedAt: string;
+  }>;
+  finalAssessment?: {
+    attemptsCount: number;
+    bestScoreMarks: number;
+    bestScorePercent: number;
+    passed: boolean;
+    lastAttemptAt: string;
+  };
+  quizResult?: {
+    passed: boolean;
+    scorePercent: number;
+    correctCount: number;
+    totalQuestions: number;
+    scoreMarks?: number;
+    totalMarks?: number;
+    completedAt: string;
+  };
+  certificateClaimedId?: string;
 }
 
 export interface SyllabusModule {

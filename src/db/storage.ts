@@ -30,7 +30,22 @@ export interface StoredEnrollment {
   completedLessons: string[];
   currentLessonId?: string;
   chapterQuizResults?: Record<string, StoredQuizResult>;
-  quizResult?: StoredQuizResult;
+  finalAssessment?: {
+    attemptsCount: number;
+    bestScoreMarks: number;
+    bestScorePercent: number;
+    passed: boolean;
+    lastAttemptAt: string;
+    attempts?: {
+      attemptNumber: number;
+      scoreMarks: number;
+      totalMarks: number;
+      scorePercent: number;
+      passed: boolean;
+      completedAt: string;
+    }[];
+  };
+  quizResult?: StoredQuizResult & { scoreMarks?: number; totalMarks?: number };
   certificateClaimedId?: string;
 }
 
@@ -42,6 +57,8 @@ export interface StoredCertificate {
   courseTitle: string;
   issuedAt: string;
   scorePercent: number;
+  scoreMarks?: number;
+  totalMarks?: number;
   standardsVerified: string[];
 }
 
