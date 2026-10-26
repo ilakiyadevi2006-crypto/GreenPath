@@ -20,7 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json());
 
@@ -888,9 +888,9 @@ app.get('/api/courses/catalog', (_req, res) => {
 // -------------------------------------------------------------
 
 function isAdminAuthorized(req: express.Request): boolean {
-  const configuredAdminKey = process.env.ADMIN_SECRET_KEY || 'greenpath-admin-2026';
+  const configuredAdminKey = process.env.ADMIN_SECRET_KEY;
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey && adminKey === configuredAdminKey) return true;
+  if (configuredAdminKey && adminKey && adminKey === configuredAdminKey) return true;
   const user = getAuthUser(req);
   if (user && user.email.toLowerCase().endsWith('@greenpath.org')) {
     return true;

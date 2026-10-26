@@ -113,7 +113,7 @@ export const AdminWorkspace: React.FC = () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey || 'greenpath-admin-2026'
+          'x-admin-key': adminKey || ''
         },
         body: JSON.stringify({ isAvailable: nextVal })
       });
@@ -142,7 +142,7 @@ export const AdminWorkspace: React.FC = () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey || 'greenpath-admin-2026'
+          'x-admin-key': adminKey || ''
         },
         body: JSON.stringify({
           summary: editSummary,
@@ -195,11 +195,11 @@ export const AdminWorkspace: React.FC = () => {
                 type="password"
                 value={passkeyInput}
                 onChange={(e) => setPasskeyInput(e.target.value)}
-                placeholder="Enter admin passkey (e.g. greenpath-admin-2026)"
+                placeholder="Enter administrator secret key"
                 className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#252925] focus:outline-none focus:border-[#246B45]"
               />
               <span className="text-[11px] text-gray-500 mt-1 block">
-                Standard administrator test key: <code className="font-mono bg-gray-100 px-1 py-0.5 rounded text-gray-700">greenpath-admin-2026</code>
+                Configured via the <code className="font-mono bg-gray-100 px-1 py-0.5 rounded text-gray-700">ADMIN_SECRET_KEY</code> server environment variable.
               </span>
             </div>
 
